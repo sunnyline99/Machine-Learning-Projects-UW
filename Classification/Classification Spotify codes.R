@@ -13,6 +13,9 @@ library(ggplot2)
 library(MASS)
 library(pROC)
 library(e1071)
+library(corrplot)
+library(randomForest)
+library(ranger)
 
 ## Set wd and seed to reproduce
 
@@ -56,6 +59,9 @@ table(spotify.train$On_chart)
 
 ## Here create correlation matrix
 
+corr <- cor(spotify.train[,-c(1,15)])
+corrplot(corr, method="circle")
+
 ## Maybe recode artist name to some groups -> maybe PCA or sth like that??
 
 
@@ -66,6 +72,10 @@ spotify.test  %>% saveRDS(here("C:/Users/justy/Desktop/Info/Inne/DSC/UW/Semestr 
 
 
 ## Here we need to perform data cleaning for both datasets
+
+
+
+
 
 
 
@@ -231,15 +241,141 @@ list(
   scale_color_brewer(palette = "Paired")
 
 
-## Ended on 2nd classes classification subject - row 538
-## finish from the 2nd classess
+## use caret to perform modeling - sth is wrong here - not sure if its needed at all
+
+tc <- trainControl(method = "cv",
+                   number = 10, 
+                   classProbs = TRUE,
+                   summaryFunction = twoClassSummary)
+
+modelLookup("rpart")
+cp.grid <- expand.grid(cp = seq(0, 0.03, 0.001))
+spotify.tree4 <- 
+  train(model1.formula,
+        data = spotify.train, 
+        method = "rpart", 
+        metric = "ROC",
+        trControl = tc,
+        tuneGrid  = cp.grid)
+
+
+spotify.tree4
+
+pred.train.tree4 <- predict(spotify.tree4, 
+                            spotify.train)
+ROC.train.tree4  <- roc(as.numeric(spotify.train$On_chart == "Yes"), 
+                        as.numeric(pred.train.tree4))
+
+pred.test.tree4  <- predict(spotify.tree4, 
+                            spotify.test)
+ROC.test.tree4  <- roc(as.numeric(spotify.test$On_chart == "Yes"), 
+                       as.numeric(pred.test.tree4))
+
+cat("Gini train = ", 2 * ROC.train.tree$auc - 1, "\n", sep = "")
+cat("Gini test  = ", 2 * ROC.test.tree4$auc - 1,  "\n", sep = "")
+
+## Variable importance
+
+tree3.importance <- spotify.tree3$variable.importance
+tree3.importance
+
+par(mar = c(5.1, 6.1, 4.1, 2.1))
+barplot(rev(tree3.importance), # vactor
+        col = "blue",  # colors
+        main = "imporatnce of variables in model tree4",
+        horiz = T,  # horizontal type of plot
+        las = 1,    # labels always horizontally 
+        cex.names = 0.6)
+
+## Second measure of variable importance
+
+(tree3.importance2 <- varImp(spotify.tree3))
+
+tree3.importance2 <- 
+  tree3.importance2 %>% 
+  rownames_to_column("variable") %>%
+  arrange(desc(Overall))
+
+barplot(rev(tree3.importance2$Overall), # wektor
+        names.arg = rev(tree3.importance2$variable), # etykietki
+        col = "blue",  # colors
+        main = "importance of variables in tree4",
+        horiz = T,  # horizontal type of plot
+        las = 1,    # labels always horizontally
+        cex.names = 0.6)
+
+## Intersection of both measures
+
+intersect(tree3.importance2$variable[1:10],
+          names(tree3.importance)[1:10])
+
+
+## Here we shall change formula and perfom modelling for second time
 
 
 
 
 
 
-## 3rd classes - bagging & random forrest
+
+
+
+
+############################################################################# 3rd classes - bagging & random forest
+
+## Here we should go for bagging technique
+
+spotify.rf <- randomForest(model1.formula, 
+                           data = spotify.train)
+
+## Function for Out-Of-Bag sampling
+
+getOOBSampleSize <- function(nObs) {
+  library(tidyverse)
+  sample(1:nObs, size = nObs, replace = T) %>%
+    unique() %>%
+    length()
+} 
+
+nReps <- 10000
+nObs  <- 10000
+time0 <- Sys.time()
+results <- replicate(nReps, getOOBSampleSize(nObs = nObs))
+time1 <- Sys.time()
+time1 - time0
+
+results %>% 
+  enframe() %>%
+  ggplot(aes(value)) +
+  geom_histogram(binwidth = 10, col = "black", fill = "pink") +
+  labs(
+    title = "OOB sample size distribution",
+    subtitle = paste0("nObs = ", nObs, ", nReps = ", nReps),
+    caption = "Source: own simulations"
+  )
+
+print(spotify.rf) ## OOB error at 19%
+
+plot(spotify.rf)
+
+## As the error stabilizes at around 100 trees lets set max for 100
+
+spotify.rf2 <- 
+  randomForest(model1.formula,
+               data = spotify.train,
+               ntree = 100,
+               sampsize = nrow(spotify.train),
+               mtry = 8,
+               # minimum number of obs in the terminal nodes
+               nodesize = 100,
+               # we also generate predictors importance measures,
+               importance = TRUE)
+print(spotify.rf2)
+
+parameters_rf <- expand.grid(mtry = 2:15)
+ctrl_oob <- trainControl(method = "oob", classProbs = TRUE)
+
+## Hyperparameters + ROC - to be continued
 
 
 ## 4th XGBoost for classification
