@@ -19,7 +19,7 @@ library(ranger)
 
 ## Set wd and seed to reproduce
 
-setwd("C:/Users/justy/Desktop/Info/Inne/DSC/UW/Semestr III/ML2/Projects/Classification")
+setwd("...")
 set.seed(123456789)
 
 ## Data downloaded from - https://www.kaggle.com/code/aniketgupta1001/hit-song-prediction-using-random-forest-ensemble/notebook
